@@ -43,12 +43,12 @@ import java.util.Properties;
  * @author water.lyl
  */
 public class ServerHttpAgent implements HttpAgent {
-    
+
     private static final Logger LOGGER = LogUtils.logger(ServerHttpAgent.class);
-    
+
     private static final NacosRestTemplate NACOS_RESTTEMPLATE = ConfigHttpClientManager.getInstance()
             .getNacosRestTemplate();
-    
+
     @Override
     public HttpRestResult<String> httpGet(String path, Map<String, String> headers, Map<String, String> paramValues,
             String encode, long readTimeoutMs) throws Exception {
@@ -86,7 +86,7 @@ public class ServerHttpAgent implements HttpAgent {
                         ex);
                 throw ex;
             }
-            
+
             if (serverListMgr.getIterator().hasNext()) {
                 currentServerAddr = serverListMgr.getIterator().next();
             } else {
@@ -97,13 +97,13 @@ public class ServerHttpAgent implements HttpAgent {
                 }
                 serverListMgr.refreshCurrentServerAddr();
             }
-            
+
         } while (System.currentTimeMillis() <= endTime);
-        
+
         LOGGER.error("no available server");
         throw new ConnectException("no available server");
     }
-    
+
     @Override
     public HttpRestResult<String> httpPost(String path, Map<String, String> headers, Map<String, String> paramValues,
             String encode, long readTimeoutMs) throws Exception {
@@ -121,7 +121,7 @@ public class ServerHttpAgent implements HttpAgent {
                 }
                 HttpRestResult<String> result = NACOS_RESTTEMPLATE
                         .postForm(getUrl(currentServerAddr, path), httpConfig, newHeaders, paramValues, String.class);
-                
+
                 if (isFail(result)) {
                     LOGGER.error("[NACOS ConnectException] currentServerAddr: {}, httpCode: {}", currentServerAddr,
                             result.getCode());
@@ -140,7 +140,7 @@ public class ServerHttpAgent implements HttpAgent {
                 LOGGER.error("[NACOS Exception httpPost] currentServerAddr: " + currentServerAddr, ex);
                 throw ex;
             }
-            
+
             if (serverListMgr.getIterator().hasNext()) {
                 currentServerAddr = serverListMgr.getIterator().next();
             } else {
@@ -151,13 +151,13 @@ public class ServerHttpAgent implements HttpAgent {
                 }
                 serverListMgr.refreshCurrentServerAddr();
             }
-            
+
         } while (System.currentTimeMillis() <= endTime);
-        
+
         LOGGER.error("no available server, currentServerAddr : {}", currentServerAddr);
         throw new ConnectException("no available server, currentServerAddr : " + currentServerAddr);
     }
-    
+
     @Override
     public HttpRestResult<String> httpDelete(String path, Map<String, String> headers, Map<String, String> paramValues,
             String encode, long readTimeoutMs) throws Exception {
@@ -195,7 +195,7 @@ public class ServerHttpAgent implements HttpAgent {
                         ex);
                 throw ex;
             }
-            
+
             if (serverListMgr.getIterator().hasNext()) {
                 currentServerAddr = serverListMgr.getIterator().next();
             } else {
@@ -206,64 +206,65 @@ public class ServerHttpAgent implements HttpAgent {
                 }
                 serverListMgr.refreshCurrentServerAddr();
             }
-            
+
         } while (System.currentTimeMillis() <= endTime);
-        
+
         LOGGER.error("no available server");
         throw new ConnectException("no available server");
     }
-    
+
     private String getUrl(String serverAddr, String relativePath) {
         return serverAddr + ContextPathUtil.normalizeContextPath(serverListMgr.getContentPath()) + relativePath;
     }
-    
+
     private boolean isFail(HttpRestResult<String> result) {
         return result.getCode() == HttpURLConnection.HTTP_INTERNAL_ERROR
                 || result.getCode() == HttpURLConnection.HTTP_BAD_GATEWAY
                 || result.getCode() == HttpURLConnection.HTTP_UNAVAILABLE;
     }
-    
+
     public static String getAppname() {
         return ParamUtil.getAppName();
     }
-    
+
     public ServerHttpAgent(ServerListManager mgr) {
+        // 装饰者模式，内部使用 serverListMgr 进行操作
         this.serverListMgr = mgr;
     }
-    
+
     public ServerHttpAgent(ServerListManager mgr, Properties properties) {
         this.serverListMgr = mgr;
     }
-    
+
     public ServerHttpAgent(Properties properties) throws NacosException {
         this.serverListMgr = new ServerListManager(properties);
     }
-    
+
     @Override
     public void start() throws NacosException {
         serverListMgr.start();
     }
-    
+
     @Override
     public String getName() {
         return serverListMgr.getName();
     }
-    
+
     @Override
     public String getNamespace() {
         return serverListMgr.getNamespace();
     }
-    
+
     @Override
     public String getTenant() {
         return serverListMgr.getTenant();
     }
-    
+
     @Override
     public String getEncode() {
         return encode;
     }
-    
+
     @Override
     public void shutdown() throws NacosException {
         String className = this.getClass().getName();
@@ -272,15 +273,15 @@ public class ServerHttpAgent implements HttpAgent {
         SpasAdapter.freeCredentialInstance();
         LOGGER.info("{} do shutdown stop", className);
     }
-    
+
     private String accessKey;
-    
+
     private String secretKey;
-    
+
     private String encode;
-    
+
     private int maxRetry = 3;
-    
+
     final ServerListManager serverListMgr;
-    
+
 }
