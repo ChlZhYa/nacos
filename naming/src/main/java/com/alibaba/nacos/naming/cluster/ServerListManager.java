@@ -17,7 +17,7 @@
 package com.alibaba.nacos.naming.cluster;
 
 import com.alibaba.nacos.common.notify.NotifyCenter;
-import com.alibaba.nacos.common.utils.InternetAddressUtil;
+import com.alibaba.nacos.common.utils.IPUtil;
 import com.alibaba.nacos.common.utils.JacksonUtils;
 import com.alibaba.nacos.core.cluster.Member;
 import com.alibaba.nacos.core.cluster.MemberChangeListener;
@@ -35,7 +35,8 @@ import com.alibaba.nacos.naming.misc.SwitchDomain;
 import com.alibaba.nacos.naming.misc.Synchronizer;
 import com.alibaba.nacos.naming.misc.UtilsAndCommons;
 import com.alibaba.nacos.sys.env.EnvUtil;
-import com.alibaba.nacos.common.utils.StringUtils;
+import com.google.common.collect.Maps;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
@@ -55,30 +56,30 @@ import java.util.Optional;
  */
 @Component("serverListManager")
 public class ServerListManager extends MemberChangeListener {
-    
+
     private static final String LOCALHOST_SITE = UtilsAndCommons.UNKNOWN_SITE;
-    
+
     private final SwitchDomain switchDomain;
-    
+
     private final ServerMemberManager memberManager;
-    
+
     private final Synchronizer synchronizer = new ServerStatusSynchronizer();
-    
+
     private volatile List<Member> servers;
-    
+
     public ServerListManager(final SwitchDomain switchDomain, final ServerMemberManager memberManager) {
         this.switchDomain = switchDomain;
         this.memberManager = memberManager;
         NotifyCenter.registerSubscriber(this);
         this.servers = new ArrayList<>(memberManager.allMembers());
     }
-    
+
     @PostConstruct
     public void init() {
         GlobalExecutor.registerServerStatusReporter(new ServerStatusReporter(), 2000);
         GlobalExecutor.registerServerInfoUpdater(new ServerInfoUpdater());
     }
-    
+
     /**
      * Judge whether contain server in cluster.
      *
@@ -93,30 +94,30 @@ public class ServerListManager extends MemberChangeListener {
         }
         return false;
     }
-    
+
     public List<Member> getServers() {
         return servers;
     }
-    
+
     @Override
     public void onEvent(MembersChangeEvent event) {
         this.servers = new ArrayList<>(event.getMembers());
     }
-    
+
     /**
      * Compatible with older version logic, In version 1.2.1 and before
      *
      * @param configInfo site:ip:lastReportTime:weight
      */
     public synchronized void onReceiveServerStatus(String configInfo) {
-        
+
         Loggers.SRV_LOG.info("receive config info: {}", configInfo);
-        
+
         String[] configs = configInfo.split("\r\n");
         if (configs.length == 0) {
             return;
         }
-        
+
         for (String config : configs) {
             // site:ip:lastReportTime:weight
             String[] params = config.split("#");
@@ -124,12 +125,12 @@ public class ServerListManager extends MemberChangeListener {
                 Loggers.SRV_LOG.warn("received malformed distro map data: {}", config);
                 continue;
             }
-    
-            String[] info = InternetAddressUtil.splitIPPortStr(params[1]);
+
+            String[] info = IPUtil.splitIPPortStr(params[1]);
             Member server = Optional.ofNullable(memberManager.find(params[1]))
                     .orElse(Member.builder().ip(info[0]).state(NodeState.UP)
                             .port(Integer.parseInt(info[1])).build());
-            
+
             // This metadata information exists from 1.3.0 onwards "version"
             if (server.getExtendVal(MemberMetaDataConstants.VERSION) == null) {
                 // copy to trigger member change event
@@ -143,41 +144,41 @@ public class ServerListManager extends MemberChangeListener {
             server.setExtendVal(MemberMetaDataConstants.SITE_KEY, params[0]);
             server.setExtendVal(MemberMetaDataConstants.WEIGHT, params.length == 4 ? Integer.parseInt(params[3]) : 1);
             memberManager.update(server);
-            
+
             if (!contains(server.getAddress())) {
                 throw new IllegalArgumentException("server: " + server.getAddress() + " is not in serverlist");
             }
         }
     }
-    
+
     private class ServerInfoUpdater implements Runnable {
-        
+
         private int cursor = 0;
-        
+
         @Override
         public void run() {
             List<Member> members = servers;
             if (members.isEmpty()) {
                 return;
             }
-            
+
             this.cursor = (this.cursor + 1) % members.size();
             Member target = members.get(cursor);
             if (Objects.equals(target.getAddress(), EnvUtil.getLocalAddress())) {
                 return;
             }
-            
+
             // This metadata information exists from 1.3.0 onwards "version"
             if (target.getExtendVal(MemberMetaDataConstants.VERSION) != null) {
                 return;
             }
-            
+
             final String path =
                     UtilsAndCommons.NACOS_NAMING_OPERATOR_CONTEXT + UtilsAndCommons.NACOS_NAMING_CLUSTER_CONTEXT
                             + "/state";
-            final Map<String, String> params = new HashMap(2);
+            final Map<String, String> params = Maps.newHashMapWithExpectedSize(2);
             final String server = target.getAddress();
-            
+
             try {
                 String content = NamingProxy.reqCommon(path, params, server, false);
                 if (!StringUtils.EMPTY.equals(content)) {
@@ -194,41 +195,42 @@ public class ServerListManager extends MemberChangeListener {
             }
         }
     }
-    
+
     private class ServerStatusReporter implements Runnable {
-        
+
         @Override
         public void run() {
             try {
-                
+
                 if (EnvUtil.getPort() <= 0) {
                     return;
                 }
-                
+
                 int weight = EnvUtil.getAvailableProcessors(0.5);
                 if (weight <= 0) {
                     weight = 1;
                 }
-                
+
                 long curTime = System.currentTimeMillis();
                 String status = LOCALHOST_SITE + "#" + EnvUtil.getLocalAddress() + "#" + curTime + "#" + weight
                         + "\r\n";
-                
+
                 List<Member> allServers = getServers();
-                
+
                 if (!contains(EnvUtil.getLocalAddress())) {
                     Loggers.SRV_LOG.error("local ip is not in serverlist, ip: {}, serverlist: {}",
                             EnvUtil.getLocalAddress(), allServers);
                     return;
                 }
-                
+
                 if (allServers.size() > 0 && !EnvUtil.getLocalAddress()
-                        .contains(InternetAddressUtil.localHostIP())) {
+                        .contains(IPUtil.localHostIP())) {
                     for (Member server : allServers) {
+                        // 循环给其他服务节点发送心跳
                         if (Objects.equals(server.getAddress(), EnvUtil.getLocalAddress())) {
                             continue;
                         }
-                        
+
                         // This metadata information exists from 1.3.0 onwards "version"
                         if (server.getExtendVal(MemberMetaDataConstants.VERSION) != null) {
                             Loggers.SRV_LOG
@@ -237,10 +239,11 @@ public class ServerListManager extends MemberChangeListener {
                                             server.getExtendVal(MemberMetaDataConstants.VERSION));
                             continue;
                         }
-                        
+
                         Message msg = new Message();
                         msg.setData(status);
-                        
+
+                        // 发送心跳
                         synchronizer.send(server.getAddress(), msg);
                     }
                 }
@@ -250,8 +253,8 @@ public class ServerListManager extends MemberChangeListener {
                 GlobalExecutor
                         .registerServerStatusReporter(this, switchDomain.getServerStatusSynchronizationPeriodMillis());
             }
-            
+
         }
     }
-    
+
 }
