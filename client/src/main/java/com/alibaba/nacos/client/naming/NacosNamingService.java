@@ -135,7 +135,7 @@ public class NacosNamingService implements NamingService {
 
     @Override
     public void registerInstance(String serviceName, String groupName, Instance instance) throws NacosException {
-        NamingUtils.checkInstanceIsLegal(instance);// 检查实例时间配置合法性
+        NamingUtils.checkInstanceIsLegal(instance);// 检查实例时间配置合法性，目前是心跳检测时间合法性
         clientProxy.registerService(serviceName, groupName, instance);
     }
 

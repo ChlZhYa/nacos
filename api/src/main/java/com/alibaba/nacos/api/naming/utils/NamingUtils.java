@@ -118,8 +118,8 @@ public class NamingUtils {
      * @throws NacosException if check failed, throw exception
      */
     public static void checkInstanceIsLegal(Instance instance) throws NacosException {
-        // 1. 心跳检测超时时间 必须大于 心跳检测间隔
-        // 2. 节点超时删除时间 必须大于 心跳检测间隔时间
+        // 1. 心跳检测超时时间(默认 15s） 必须大于 心跳检测间隔(默认 5s)
+        // 2. 节点超时删除时间(默认 30s） 必须大于 心跳检测间隔时间(默认 5s)
         if (instance.getInstanceHeartBeatTimeOut() < instance.getInstanceHeartBeatInterval()
                 || instance.getIpDeleteTimeout() < instance.getInstanceHeartBeatInterval()) {
             throw new NacosException(NacosException.INVALID_PARAM,
